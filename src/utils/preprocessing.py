@@ -7,6 +7,8 @@ import pandas as pd
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
+import requests
+import io
 
 # import seaborn as sns
 from tqdm import tqdm
@@ -17,16 +19,13 @@ from torchvision import transforms
 class Preprocessor:
     """
     Class with functions to preprocess images on the fly.
-
     Required Functions:
     - get:
         - Input:
             - image_path: str
                 - path to image
-
             - transforms: list(str/int/other format)
                 - list of transforms such as rotate/flip/resize/etc.
-
         - Returns:
             - image: np.ndarray (w, h, 3)
                 - image matrix
@@ -50,7 +49,6 @@ class Preprocessor:
         """
         Generates random combinations of transformations to be applied to the images.
             - p_transformations: dictionary of probabilities of each transformation
-
         """
 
         combinations = []
@@ -174,8 +172,9 @@ class Preprocessor:
 
     def get(
         self,
-        image_path,
-        combination,
+        combination=[""],
+        image_path="https://thispersondoesnotexist.com/image",
+        is_url=True,
         rotate=np.random.randint(0, 90),
         scale=np.random.uniform(0.5, 1),
         flip=np.random.choice(["h", "v"]),
@@ -190,7 +189,13 @@ class Preprocessor:
         together=True,
     ):
 
-        image = Image.open(image_path)
+        if is_url:
+            # get image from url
+            image = requests.get(image_path)
+            image = image.content
+            image = Image.open(io.BytesIO(image))
+        else:
+            image = Image.open(image_path)
         image = image.resize(self.image_size)
         image = np.array(image)
         image = torch.from_numpy(image)
