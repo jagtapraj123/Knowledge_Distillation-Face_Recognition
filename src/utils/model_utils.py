@@ -3,6 +3,7 @@
 import pickle
 import torch
 
+
 def load_state_dict(model, fname):
     """
     Set parameters converted from Caffe models authors of VGGFace2 provide.
@@ -11,8 +12,8 @@ def load_state_dict(model, fname):
         model: model
         fname: file name of parameters converted from a Caffe model, assuming the file format is Pickle.
     """
-    with open(fname, 'rb') as f:
-        weights = pickle.load(f, encoding='latin1')
+    with open(fname, "rb") as f:
+        weights = pickle.load(f, encoding="latin1")
 
     own_state = model.state_dict()
     for name, param in weights.items():
@@ -24,7 +25,11 @@ def load_state_dict(model, fname):
                     print(name)
                     continue
 
-                raise RuntimeError('While copying the parameter named {}, whose dimensions in the model are {} and whose '\
-                                   'dimensions in the checkpoint are {}.'.format(name, own_state[name].shape, param.shape))
+                raise RuntimeError(
+                    "While copying the parameter named {}, whose dimensions in the model are {} and whose "
+                    "dimensions in the checkpoint are {}.".format(
+                        name, own_state[name].shape, param.shape
+                    )
+                )
         else:
             raise KeyError('unexpected key "{}" in state_dict'.format(name))

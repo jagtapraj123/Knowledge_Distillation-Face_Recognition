@@ -234,7 +234,7 @@ class Pipeline:
 
         # Training
         # pbar = tqdm(range(self.epochs), desc="Training epoch")
-        for epoch in range(1, self.epochs+1):
+        for epoch in range(1, self.epochs + 1):
             print("lr: {}".format(lr_scheduler.get_last_lr()))
 
             ys = []
@@ -292,7 +292,10 @@ class Pipeline:
                     self.train_writer.add_scalar(score_func["name"], score, epoch)
 
                 self.train_writer.flush()
-                print("epoch:{}, Training Scores:{}".format(epoch, training_scores), flush=True)
+                print(
+                    "epoch:{}, Training Scores:{}".format(epoch, training_scores),
+                    flush=True,
+                )
                 training_log["scores"].append(
                     {"epoch": epoch, "scores": training_scores}
                 )
@@ -332,7 +335,10 @@ class Pipeline:
                     self.valid_writer.add_scalar(score_func["name"], score, epoch)
 
                 self.valid_writer.flush()
-                print("epoch:{}, Validation Scores:{}".format(epoch, validation_scores), flush=True)
+                print(
+                    "epoch:{}, Validation Scores:{}".format(epoch, validation_scores),
+                    flush=True,
+                )
                 validation_log["scores"].append(
                     {"epoch": epoch, "scores": validation_scores}
                 )

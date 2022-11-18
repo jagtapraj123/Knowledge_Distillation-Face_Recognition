@@ -31,7 +31,7 @@ model = ResNet.resnet50(num_classes=len(data["label"].unique()), include_top=Tru
 
 # model.fc.reset_parameters()
 
-load_state_dict(model, 'saved_models/resnet50_ft_weight.pkl')
+load_state_dict(model, "saved_models/resnet50_ft_weight.pkl")
 for params in model.parameters():
     params.requires_grad = False
 

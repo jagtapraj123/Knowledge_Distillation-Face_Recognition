@@ -20,7 +20,8 @@ def data_init(
     for i, c in enumerate(classes):
         classpath = "{}/{}/".format(dataset_loc, c)
         if os.path.isdir(classpath):
-            class_name = c.removeprefix("pins_")
+            # class_name = c.removeprefix("pins_")
+            class_name = c.split("pins_")[1]
             images = os.listdir(classpath)
             assert (
                 len(images) >= num_images_threshold
