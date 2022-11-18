@@ -2,13 +2,10 @@ import torch
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import torch
-import pandas as pd
 from PIL import Image
-import numpy as np
-import matplotlib.pyplot as plt
 import requests
 import io
+from math import ceil, floor
 
 # import seaborn as sns
 from tqdm import tqdm
@@ -138,8 +135,11 @@ class Preprocessor:
                 image, image.shape[1] * scale
             )
             # pad the cropped image to the original size
-            pad = (image.shape[1] - cropped_image.shape[1]) // 2
-            image = transforms.functional.pad(cropped_image, (pad, pad, pad, pad))
+            pad = image.shape[1] - cropped_image.shape[1]
+            image = transforms.functional.pad(
+                cropped_image,
+                (ceil(pad / 2), ceil(pad / 2), floor(pad / 2), floor(pad / 2)),
+            )
 
         if flip is not None:
             if flip == "h":
@@ -202,10 +202,10 @@ class Preprocessor:
         image = image.permute(2, 0, 1)
         image = image.float()
         image = image / 255
-        image = self.augment(
-            image,
-            combination=combination,
-        )
+        # image = self.augment(
+        #     image,
+        #     combination=combination,
+        # )
         image = self.augment(
             image,
             combination=combination,

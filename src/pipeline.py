@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 
+from utils.preprocessing import Preprocessor
+
 import os
 from datetime import datetime
 from tqdm import tqdm
@@ -38,7 +40,14 @@ class DatasetMapper(Dataset):
         - Function to create label/feature-values given an image (for semi-supervised learning)
     """
 
-    def __init__(self, root_dir, image_data_file, preprocessor, teacher_func: None):
+    def __init__(
+        self,
+        root_dir,
+        image_data_file,
+        preprocessor: Preprocessor,
+        teacher_func=None,
+        augment=False,
+    ):
         """
         Init for DatasetMapper
 
@@ -60,8 +69,10 @@ class DatasetMapper(Dataset):
 
         self.root_dir = root_dir
         self.image_data_file = pd.read_csv(image_data_file)
+        self.num_classes = len(self.image_data_file["label"].unique())
         self.preprocessor = preprocessor
         self.teacher_func = teacher_func
+        self.augment = augment
 
     def __len__(self):
         """
@@ -90,21 +101,52 @@ class DatasetMapper(Dataset):
         img_name = os.path.join(self.root_dir, self.image_data_file.iloc[idx, 0])
 
         # Get processed image from preprocessor given image path
-        image = self.preprocessor.get(img_name)
+        if self.augment:
+            image = self.preprocessor.get(
+                self.preprocessor.make_random_combinations(
+                    1,
+                    p_transformations={
+                        "rotate": 0.5,
+                        "scale": 0.5,
+                        "flip": 0.5,
+                        "gaussian_blur": 0.1,
+                        "color_jitter": 0,
+                        "random_erasing": 0,
+                    },
+                )[0],
+                image_path=img_name,
+                color_jitter=None,
+                rotate=np.random.randint(0, 45),
+                scale=np.random.uniform(0.7, 1),
+                flip="h",
+                gaussian_blur=1,
+                is_url=False,
+            )
+        else:
+            image = self.preprocessor.get("", img_name, is_url=False)
 
         # Get image label/feature-values from teacher function (if specified)
         if self.teacher_func is not None:
             img_label = self.teacher_func(image)
         else:
             # If not specified, get label/feature-values from image data csv file
+            # img_label = F.one_hot(torch.LongTensor([self.image_data_file.iloc[idx, 1]]), num_classes=self.num_classes)
             img_label = self.image_data_file.iloc[idx, 1]
-
+        # print(image.shape, flush=True)
         return image, img_label
 
 
 class Pipeline:
     def __init__(
-        self, name, model, batch_size, root_dir, image_data_file, preprocessor, **kwargs
+        self,
+        name,
+        model,
+        batch_size,
+        root_dir,
+        train_image_data_file,
+        test_image_data_file,
+        preprocessor,
+        **kwargs
     ):
         self.name = name + "_" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -112,7 +154,8 @@ class Pipeline:
         self.batch_size = batch_size
 
         self.root_dir = root_dir
-        self.image_data_file = image_data_file
+        self.train_image_data_file = train_image_data_file
+        self.test_image_data_file = test_image_data_file
 
         self.preprocessor = preprocessor
 
@@ -120,12 +163,16 @@ class Pipeline:
 
         # Set training device (CUDA-GPU / CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Training Devide: {}".format(self.device))
+        print("Training Device: {}".format(self.device))
         self.model.to(self.device)
 
         # Creating dataset mapper instances
-        train_set = DatasetMapper(root_dir, image_data_file, self.preprocessor)
-        test_set = DatasetMapper(root_dir, image_data_file, self.preprocessor)
+        train_set = DatasetMapper(
+            root_dir, train_image_data_file, self.preprocessor, augment=True
+        )
+        test_set = DatasetMapper(
+            root_dir, test_image_data_file, self.preprocessor, augment=False
+        )
 
         # Creating dataset loader to load data parallelly
         self.train_loader = DataLoader(
@@ -162,7 +209,7 @@ class Pipeline:
             step_size_func = kwargs["step_size_func"]
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, step_size_func)
         else:
-            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda e: lr)
+            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda e: 1)
 
         # Loss function for minimizing loss
         assert (
@@ -185,9 +232,9 @@ class Pipeline:
         validation_log = {"errors": [], "scores": []}
 
         # Training
-        pbar = tqdm(range(self.epochs), desc="Training epoch")
-        for epoch in pbar:
-            pbar.set_postfix({"lr": lr_scheduler.get_lr()})
+        # pbar = tqdm(range(self.epochs), desc="Training epoch")
+        for epoch in range(self.epochs):
+            print("lr: {}".format(lr_scheduler.get_last_lr()))
 
             ys = []
             y_preds = []
@@ -197,9 +244,12 @@ class Pipeline:
 
             # Batch-wise optimization
             step = 0
-            for x_train, y_train in self.train_loader:
-                x = x_train.type(torch.LongTensor).to(self.device)
-                y = y_train.type(torch.FloatTensor).to(self.device)
+            pbar = tqdm(self.train_loader, desc="Training epoch {}".format(epoch))
+            for x_train, y_train in pbar:
+                x = x_train.type(torch.FloatTensor).to(self.device)
+                # print(type(x_train), type(x), x.shape)
+                y = y_train.type(torch.LongTensor).to(self.device)
+                # print(type(y_train), type(y), y.shape)
 
                 # Forward pass
                 y_pred = self.model(x)
@@ -217,9 +267,9 @@ class Pipeline:
                 optimizer.step()
 
                 # Save/show loss per step of training batches
-                pbar.set_postfix({"training error": loss})
+                pbar.set_postfix({"training error": loss.item()})
                 training_log["errors"].append(
-                    {"epoch": epoch, "step": step, "loss": loss}
+                    {"epoch": epoch, "step": step, "loss": loss.item()}
                 )
 
                 self.train_writer.add_scalar("loss", loss)
@@ -227,7 +277,7 @@ class Pipeline:
 
                 # Save y_true and y_pred in lists for calculating epoch-wise scores
                 ys += list(y.cpu().detach().numpy())
-                y_preds += list(y_pred.cpu().detach().numpy())
+                y_preds += list(torch.argmax(y_pred, dim=1).cpu().detach().numpy())
 
             # Update learning rate as defined above
             lr_scheduler.step()
@@ -241,6 +291,7 @@ class Pipeline:
                     self.train_writer.add_scalar(score_func["name"], score)
 
                 self.train_writer.flush()
+                # print("epoch:{}, Training Scores:{}".format(epoch, training_scores), flush=True)
                 training_log["scores"].append(
                     {"epoch": epoch, "scores": training_scores}
                 )
@@ -248,9 +299,11 @@ class Pipeline:
             # Putting model in evaluation mode to stop calculating back gradients
             self.model.eval()
             with torch.no_grad():
-                for x_test, y_test in self.test_loader:
-                    x = x_test.type(torch.LongTensor).to(self.device)
-                    y = y_test.type(torch.FloatTensor).to(self.device)
+                for x_test, y_test in tqdm(
+                    self.test_loader, desc="Validation epoch {}".format(epoch)
+                ):
+                    x = x_test.type(torch.FloatTensor).to(self.device)
+                    y = y_test.type(torch.LongTensor).to(self.device)
 
                     # Predicting
                     y_pred = self.model(x)
@@ -260,12 +313,14 @@ class Pipeline:
 
                     # Save/show loss per batch of validation data
                     # pbar.set_postfix({"test error": loss})
-                    validation_log.append({"epoch": epoch, "loss": loss})
-                    self.valid_writer.add_scalar("loss", loss)
+                    validation_log["errors"].append(
+                        {"epoch": epoch, "loss": loss.item()}
+                    )
+                    self.valid_writer.add_scalar("loss", loss.item())
 
                     # Save y_true and y_pred in lists for calculating epoch-wise scores
                     ys += list(y.cpu().detach().numpy())
-                    y_preds += list(y_pred.cpu().detach().numpy())
+                    y_preds += list(torch.argmax(y_pred, dim=1).cpu().detach().numpy())
 
             # Save/show validation scores per epoch
             validation_scores = []
@@ -276,6 +331,7 @@ class Pipeline:
                     self.valid_writer.add_scalar(score_func["name"], score)
 
                 self.valid_writer.flush()
+                # print("epoch:{}, Validation Scores:{}".format(epoch, validation_scores), flush=True)
                 validation_log["scores"].append(
                     {"epoch": epoch, "scores": validation_scores}
                 )
@@ -283,6 +339,18 @@ class Pipeline:
             # Saving model at specified checkpoints
             if "save_checkpoints" in kwargs.keys():
                 if epoch % kwargs["save_checkpoints"]["epoch"] == 0:
+                    # os.makedirs(
+                    #     kwargs["save_checkpoints"]["path"]
+                    #     if type(kwargs["save_checkpoints"]["path"]) == str
+                    #     else kwargs["save_checkpoints"]["path"](epoch)
+                    # )
+                    chkp_path = os.path.join(
+                        kwargs["save_checkpoints"]["path"],
+                        self.name,
+                        "checkpoints",
+                        "{}".format(epoch),
+                    )
+                    os.makedirs(chkp_path)
                     torch.save(
                         {
                             "epoch": epoch,
@@ -290,7 +358,7 @@ class Pipeline:
                             "optimizer_state_dict": optimizer.state_dict(),
                             "loss": loss,
                         },
-                        kwargs["save_checkpoints"]["path"],
+                        chkp_path + "/model.pth",
                     )
 
         return training_log, validation_log
