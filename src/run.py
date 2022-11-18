@@ -22,12 +22,14 @@ preprocessor = Preprocessor()
 # exit()
 
 model_name = "resnet_scratch"
-# model = ResNet.resnet50(num_classes=len(data["label"].unique()), include_top=False)
-model = ResNet.resnet50
+model = ResNet.resnet50(num_classes=len(data["label"].unique()), include_top=True)
+# model = ResNet.resnet50
+
 trainer = Pipeline(
     name=model_name,
     model=model,
     batch_size=16,
+    workers=0,
     root_dir="../dataset",
     train_image_data_file="../dataset/train_image_data.csv",
     test_image_data_file="../dataset/test_image_data.csv",

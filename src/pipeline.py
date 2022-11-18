@@ -142,6 +142,7 @@ class Pipeline:
         name,
         model,
         batch_size,
+        workers,
         root_dir,
         train_image_data_file,
         test_image_data_file,
@@ -150,7 +151,7 @@ class Pipeline:
     ):
         self.name = name + "_" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        self.model = model(**kwargs)
+        self.model = model
         self.batch_size = batch_size
 
         self.root_dir = root_dir
@@ -176,10 +177,10 @@ class Pipeline:
 
         # Creating dataset loader to load data parallelly
         self.train_loader = DataLoader(
-            train_set, batch_size=self.batch_size, num_workers=0, shuffle=True
+            train_set, batch_size=self.batch_size, num_workers=workers, shuffle=True
         )
         self.test_loader = DataLoader(
-            test_set, batch_size=self.batch_size, num_workers=0
+            test_set, batch_size=self.batch_size, num_workers=workers
         )
 
         # Create summary writers for tensorboard logs
@@ -233,7 +234,7 @@ class Pipeline:
 
         # Training
         # pbar = tqdm(range(self.epochs), desc="Training epoch")
-        for epoch in range(self.epochs):
+        for epoch in range(1, self.epochs+1):
             print("lr: {}".format(lr_scheduler.get_last_lr()))
 
             ys = []
@@ -291,7 +292,7 @@ class Pipeline:
                     self.train_writer.add_scalar(score_func["name"], score)
 
                 self.train_writer.flush()
-                # print("epoch:{}, Training Scores:{}".format(epoch, training_scores), flush=True)
+                print("epoch:{}, Training Scores:{}".format(epoch, training_scores), flush=True)
                 training_log["scores"].append(
                     {"epoch": epoch, "scores": training_scores}
                 )
@@ -331,7 +332,7 @@ class Pipeline:
                     self.valid_writer.add_scalar(score_func["name"], score)
 
                 self.valid_writer.flush()
-                # print("epoch:{}, Validation Scores:{}".format(epoch, validation_scores), flush=True)
+                print("epoch:{}, Validation Scores:{}".format(epoch, validation_scores), flush=True)
                 validation_log["scores"].append(
                     {"epoch": epoch, "scores": validation_scores}
                 )

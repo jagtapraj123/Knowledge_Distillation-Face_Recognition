@@ -161,3 +161,7 @@ cython_debug/
 
 # dataset images
 105_classes_pins_dataset
+
+# runlogs
+logs/
+.log
