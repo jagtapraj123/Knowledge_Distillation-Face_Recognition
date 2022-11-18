@@ -273,7 +273,7 @@ class Pipeline:
                     {"epoch": epoch, "step": step, "loss": loss.item()}
                 )
 
-                self.train_writer.add_scalar("loss", loss)
+                self.train_writer.add_scalar("loss", loss.item(), epoch)
                 self.train_writer.flush()
 
                 # Save y_true and y_pred in lists for calculating epoch-wise scores
@@ -289,7 +289,7 @@ class Pipeline:
                 for score_func in kwargs["score_functions"]:
                     score = score_func["func"](ys, y_preds)
                     training_scores.append({score_func["name"]: score})
-                    self.train_writer.add_scalar(score_func["name"], score)
+                    self.train_writer.add_scalar(score_func["name"], score, epoch)
 
                 self.train_writer.flush()
                 print("epoch:{}, Training Scores:{}".format(epoch, training_scores), flush=True)
@@ -317,7 +317,7 @@ class Pipeline:
                     validation_log["errors"].append(
                         {"epoch": epoch, "loss": loss.item()}
                     )
-                    self.valid_writer.add_scalar("loss", loss.item())
+                    self.valid_writer.add_scalar("loss", loss.item(), epoch)
 
                     # Save y_true and y_pred in lists for calculating epoch-wise scores
                     ys += list(y.cpu().detach().numpy())
@@ -329,7 +329,7 @@ class Pipeline:
                 for score_func in kwargs["score_functions"]:
                     score = score_func["func"](ys, y_preds)
                     validation_scores.append({score_func["name"]: score})
-                    self.valid_writer.add_scalar(score_func["name"], score)
+                    self.valid_writer.add_scalar(score_func["name"], score, epoch)
 
                 self.valid_writer.flush()
                 print("epoch:{}, Validation Scores:{}".format(epoch, validation_scores), flush=True)

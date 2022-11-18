@@ -5,6 +5,7 @@ import torch
 import models.resnet_50 as ResNet
 from pipeline import Pipeline
 from utils.preprocessing import Preprocessor
+from utils.model_utils import load_state_dict
 import math
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from functools import partial
@@ -21,9 +22,23 @@ preprocessor = Preprocessor()
 # img = preprocessor.get('g', "../dataset/105_classes_pins_dataset/pins_Anne Hathaway/Anne Hathaway0_293.jpg", color_jitter=None, is_url=False, gaussian_blur=1)
 # exit()
 
-model_name = "resnet_scratch"
+model_name = "resnet_transfer"
 model = ResNet.resnet50(num_classes=len(data["label"].unique()), include_top=True)
+
+# checkpoint = torch.load('saved_models/resnet50_ft_weight.pkl')
+# model.load_state_dict(checkpoint['model_state_dict'])
 # model = ResNet.resnet50
+
+# model.fc.reset_parameters()
+
+load_state_dict(model, 'saved_models/resnet50_ft_weight.pkl')
+for params in model.parameters():
+    params.requires_grad = False
+
+model.fc.reset_parameters()
+
+for params in model.fc.parameters():
+    params.requires_grad = True
 
 trainer = Pipeline(
     name=model_name,
