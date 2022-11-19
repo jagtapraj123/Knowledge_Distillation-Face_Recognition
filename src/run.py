@@ -71,8 +71,8 @@ training_log, validation_log = trainer.train(
 )
 
 
-with open(trainer.name + "training_log.pkl", "w") as f:
+with open(trainer.name + "training_log.pkl", "wb") as f:
     pickle.dump(training_log, f)
 
-with open(trainer.name + "validation_log.pkl", "w") as f:
+with open(trainer.name + "validation_log.pkl", "wb") as f:
     pickle.dump(validation_log, f)
