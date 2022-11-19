@@ -47,6 +47,7 @@ class DatasetMapper(Dataset):
         preprocessor: Preprocessor,
         teacher_func=None,
         augment=False,
+        **kwargs
     ):
         """
         Init for DatasetMapper
@@ -169,10 +170,10 @@ class Pipeline:
 
         # Creating dataset mapper instances
         train_set = DatasetMapper(
-            root_dir, train_image_data_file, self.preprocessor, augment=True
+            root_dir, train_image_data_file, self.preprocessor, augment=True, **kwargs
         )
         test_set = DatasetMapper(
-            root_dir, test_image_data_file, self.preprocessor, augment=False
+            root_dir, test_image_data_file, self.preprocessor, augment=False, **kwargs
         )
 
         # Creating dataset loader to load data parallelly

@@ -42,7 +42,7 @@ trainer = Pipeline(
 )
 
 num_epochs = 100
-lr = 0.001
+lr = 0.0001
 step_size_func = lambda e: 1 / math.sqrt(1 + e)
 
 
