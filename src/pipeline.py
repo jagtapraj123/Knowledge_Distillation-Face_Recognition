@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 
+from utils.data_mappers import DatasetMapper
 from utils.preprocessing import Preprocessor
 
 import os
@@ -16,125 +17,6 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
 from torch.utils.tensorboard import SummaryWriter
-
-
-class DatasetMapper(Dataset):
-    """
-    Dataset Mapper class to get image and label given an index.
-
-    The class is written using torch parent class 'Dataset' for parallelizing and prefetching to accelerate training
-
-    -----------
-    Attributes:
-    -----------
-    - root_dir: str
-        - directory path where images are stored
-
-    - image_data_file: str
-        - path to csv file that stores image names and labels
-
-    - preprocessor: Instance of subclass of utils.Preprocessor
-        - stores preprocessor with 'get' function that returns processed image given path to image and transformations
-
-    - teacher_func: Function
-        - Function to create label/feature-values given an image (for semi-supervised learning)
-    """
-
-    def __init__(
-        self,
-        root_dir,
-        image_data_file,
-        preprocessor: Preprocessor,
-        teacher_func=None,
-        augment=False,
-        **kwargs
-    ):
-        """
-        Init for DatasetMapper
-
-        -----
-        Args:
-        -----
-        - root_dir: str
-            - directory path where images are stored
-
-        - image_data_file: str
-            - path to csv file that stores image names and labels
-
-        - preprocessor: Instance of subclass of utils.Preprocessor
-            - stores preprocessor with 'get' function that returns processed image given path to image and transformations
-
-        - teacher_func: Function
-            - Function to create label/feature-values given an image (for semi-supervised learning)
-        """
-
-        self.root_dir = root_dir
-        self.image_data_file = pd.read_csv(image_data_file)
-        self.num_classes = len(self.image_data_file["label"].unique())
-        self.preprocessor = preprocessor
-        self.teacher_func = teacher_func
-        self.augment = augment
-
-    def __len__(self):
-        """
-        Function to get size of dataset
-        """
-
-        return self.image_data_file.shape[0]
-
-    def __getitem__(self, idx):
-        """
-        Mapper function to get processed image and label given an index
-
-        -----
-        Args:
-        -----
-        - idx: int (python int / numpy.int / torch.int)
-            - index of an image
-            - idx >= 0 and idx < self.__len__()
-        """
-
-        # Convert to python int
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        # Get final image path from image data csv file
-        img_name = os.path.join(self.root_dir, self.image_data_file.iloc[idx, 0])
-
-        # Get processed image from preprocessor given image path
-        if self.augment:
-            image = self.preprocessor.get(
-                self.preprocessor.make_random_combinations(
-                    1,
-                    p_transformations={
-                        "rotate": 0.5,
-                        "scale": 0.5,
-                        "flip": 0.5,
-                        "gaussian_blur": 0.1,
-                        "color_jitter": 0,
-                        "random_erasing": 0,
-                    },
-                )[0],
-                image_path=img_name,
-                color_jitter=None,
-                rotate=np.random.randint(0, 45),
-                scale=np.random.uniform(0.7, 1),
-                flip="h",
-                gaussian_blur=1,
-                is_url=False,
-            )
-        else:
-            image = self.preprocessor.get("", img_name, is_url=False)
-
-        # Get image label/feature-values from teacher function (if specified)
-        if self.teacher_func is not None:
-            img_label = self.teacher_func(image)
-        else:
-            # If not specified, get label/feature-values from image data csv file
-            # img_label = F.one_hot(torch.LongTensor([self.image_data_file.iloc[idx, 1]]), num_classes=self.num_classes)
-            img_label = self.image_data_file.iloc[idx, 1]
-        # print(image.shape, flush=True)
-        return image, img_label
 
 
 class Pipeline:
@@ -206,7 +88,7 @@ class Pipeline:
 
         # Learning rate scheduler for changing learning rate during training
         if "lr_scheduler" in kwargs.keys():
-            lr_scheduler = kwargs["lr_scheduler"]
+            lr_scheduler = kwargs["lr_scheduler"](optimizer)
         elif "step_size_func" in kwargs.keys():
             step_size_func = kwargs["step_size_func"]
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, step_size_func)
@@ -238,14 +120,13 @@ class Pipeline:
         for epoch in range(1, self.epochs + 1):
             print("lr: {}".format(lr_scheduler.get_last_lr()))
 
-            ys = []
-            y_preds = []
-
             # Putting model in training mode to calculate back gradients
             self.model.train()
 
+            ys = []
+            y_preds = []
+
             # Batch-wise optimization
-            step = 0
             pbar = tqdm(self.train_loader, desc="Training epoch {}".format(epoch))
             for x_train, y_train in pbar:
                 x = x_train.type(torch.FloatTensor).to(self.device)
@@ -270,9 +151,7 @@ class Pipeline:
 
                 # Save/show loss per step of training batches
                 pbar.set_postfix({"training error": loss.item()})
-                training_log["errors"].append(
-                    {"epoch": epoch, "step": step, "loss": loss.item()}
-                )
+                training_log["errors"].append({"epoch": epoch, "loss": loss.item()})
 
                 self.train_writer.add_scalar("loss", loss.item(), epoch)
                 self.train_writer.flush()
@@ -300,6 +179,9 @@ class Pipeline:
                 training_log["scores"].append(
                     {"epoch": epoch, "scores": training_scores}
                 )
+
+            ys = []
+            y_preds = []
 
             # Putting model in evaluation mode to stop calculating back gradients
             self.model.eval()
