@@ -102,6 +102,33 @@ class Pipeline:
         loss_func_with_grad = kwargs["loss_func_with_grad"]
         loss_func = kwargs["loss_func"]
 
+        knlg_distill = False
+
+        if "knlg_distill" in kwargs.keys():
+            print('Pure knowledge Distillation')
+            knlg_distill = kwargs["knlg_distill"]
+            if knlg_distill:
+                
+                assert "teacher_model" in kwargs.keys(), "Provide teacher_model in **kwargs"
+                # load saved teacher model
+                teacher_model = kwargs["teacher_model"]
+                
+
+                if "knlg_distill_weight" in kwargs.keys():
+                    knlg_distill_weight = kwargs["knlg_distill_weight"]
+                else:
+                    knlg_distill_weight = 0.5
+                
+                print('Knowledge Distillation Weight: {}'.format(knlg_distill_weight))
+
+        else:
+            print('No kwargs Pure knowledge Distillation')
+            knlg_distill = False
+            knlg_distill_weight = 0
+
+
+
+
         # if 'loss_func' in kwargs.keys() and 'loss_func_with_grad' in kwargs.keys():
         # loss_func_with_grad = kwargs['loss_func_with_grad']
         # loss_func = kwargs['loss_func']
@@ -141,7 +168,27 @@ class Pipeline:
                 optimizer.zero_grad()
 
                 # Calculating loss
-                loss = loss_func_with_grad(y_pred, y)
+                if knlg_distill:
+                        y_pred = self.model(x)
+                        
+                        y_pred_teacher = torch.argmax(teacher_model(x), dim=1)
+                        
+                        # loss against the ground truth
+                        loss1 = loss_func_with_grad(y_pred, y)
+                        # loss against the teacher model
+                        # print(y.shape)
+                        # print(y_pred_teacher.shape)
+                        # print(y_pred.shape)
+                        loss2 = loss_func(y_pred, y_pred_teacher)
+                        
+                        # weighted sum of the two losses
+                        loss = knlg_distill_weight * loss1 + (1 - knlg_distill_weight) * loss2
+
+                else:
+                    y_pred = self.model(x)
+                    loss = loss_func_with_grad(y_pred, y)
+                    
+
 
                 # Backward pass to calculate gradients
                 loss.backward()
@@ -149,9 +196,14 @@ class Pipeline:
                 # Update gradients
                 optimizer.step()
 
-                # Save/show loss per step of training batches
-                pbar.set_postfix({"training error": loss.item()})
-                training_log["errors"].append({"epoch": epoch, "loss": loss.item()})
+                if knlg_distill:
+                    # Save/show loss per step of training batches
+                    pbar.set_postfix({"training error": loss.item()})
+                    training_log["errors"].append({"epoch": epoch, "loss": loss.item(), "loss1": loss1.item(), "loss2": loss2.item()})
+                else:
+                    # Save/show loss per step of training batches
+                    pbar.set_postfix({"training error": loss.item()})
+                    training_log["errors"].append({"epoch": epoch, "loss": loss.item()})
 
                 self.train_writer.add_scalar("loss", loss.item(), epoch)
                 self.train_writer.flush()
@@ -192,17 +244,31 @@ class Pipeline:
                     x = x_test.type(torch.FloatTensor).to(self.device)
                     y = y_test.type(torch.LongTensor).to(self.device)
 
-                    # Predicting
-                    y_pred = self.model(x)
-
-                    # Calculating loss
-                    loss = loss_func(y_pred, y)
-
-                    # Save/show loss per batch of validation data
-                    # pbar.set_postfix({"test error": loss})
-                    validation_log["errors"].append(
-                        {"epoch": epoch, "loss": loss.item()}
+                    if knlg_distill:
+                        y_pred = self.model(x)
+                        y_pred_teacher = teacher_model(x)
+                        y_pred_teacher = torch.argmax(y_pred_teacher, dim=1)
+                        # loss against the ground truth
+                        loss1 = loss_func_with_grad(y_pred, y)
+                        # loss against the teacher model
+                        loss2 = loss_func(y_pred, y_pred_teacher)
+                        # weighted sum of the two losses
+                        loss = knlg_distill_weight * loss1 + (1 - knlg_distill_weight) * loss2
+                        validation_log["errors"].append(
+                        {"epoch": epoch, "loss": loss.item(), "loss1": loss1.item(), "loss2": loss2.item()}
                     )
+
+                    else:
+                        y_pred = self.model(x)
+                        loss = loss_func_with_grad(y_pred, y)
+                    
+                    
+                        # Save/show loss per batch of validation data
+                        # pbar.set_postfix({"test error": loss})
+                        validation_log["errors"].append(
+                            {"epoch": epoch, "loss": loss.item()}
+                        )
+
                     self.valid_writer.add_scalar("loss", loss.item(), epoch)
 
                     # Save y_true and y_pred in lists for calculating epoch-wise scores
