@@ -172,9 +172,8 @@ class Preprocessor:
 
     def get(
         self,
-        combination=[""],
-        image_path="https://thispersondoesnotexist.com/image",
-        is_url=True,
+        combination="",
+        image_path="",
         rotate=np.random.randint(0, 90),
         scale=np.random.uniform(0.5, 1),
         flip=np.random.choice(["h", "v"]),
@@ -189,13 +188,7 @@ class Preprocessor:
         together=True,
     ):
 
-        if is_url:
-            # get image from url
-            image = requests.get(image_path)
-            image = image.content
-            image = Image.open(io.BytesIO(image))
-        else:
-            image = Image.open(image_path)
+        image = Image.open(image_path)
         image = image.resize(self.image_size)
         image = np.array(image)
         image = torch.from_numpy(image)

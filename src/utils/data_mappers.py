@@ -8,9 +8,9 @@ import torch
 from torch.utils.data import Dataset
 
 
-class DatasetMapper(Dataset):
+class LabeledDatasetMapper(Dataset):
     """
-    Dataset Mapper class to get image and label given an index.
+    Dataset Mapper class to get image and label given an index from Labeled Dataset.
 
     The class is written using torch parent class 'Dataset' for parallelizing and prefetching to accelerate training
 
@@ -26,22 +26,19 @@ class DatasetMapper(Dataset):
     - preprocessor: Instance of subclass of utils.Preprocessor
         - stores preprocessor with 'get' function that returns processed image given path to image and transformations
 
-    - teacher_func: Function
-        - Function to create label/feature-values given an image (for semi-supervised learning)
+    - augment: Bool
+        - boolean value specifying whether to transform images in preprocessor.
     """
 
     def __init__(
         self,
-        root_dir,
-        image_data_file,
+        root_dir: str,
+        image_data_file: str,
         preprocessor: Preprocessor,
-        teacher_func=None,
-        pretrain_size=1,
-        augment=False,
-        **kwargs
-    ):
+        augment: bool = False,
+    ) -> None:
         """
-        Init for DatasetMapper
+        Init for LabeledDatasetMapper
 
         -----
         Args:
@@ -55,16 +52,14 @@ class DatasetMapper(Dataset):
         - preprocessor: Instance of subclass of utils.Preprocessor
             - stores preprocessor with 'get' function that returns processed image given path to image and transformations
 
-        - teacher_func: Function
-            - Function to create label/feature-values given an image (for semi-supervised learning)
+        - augment: Bool
+            - boolean value specifying whether to transform images in preprocessor.
         """
 
         self.root_dir = root_dir
         self.image_data_file = pd.read_csv(image_data_file)
         self.num_classes = len(self.image_data_file["label"].unique())
         self.preprocessor = preprocessor
-        self.teacher_func = teacher_func
-        self.pretrain_size = pretrain_size
         self.augment = augment
 
     def __len__(self):
@@ -72,10 +67,7 @@ class DatasetMapper(Dataset):
         Function to get size of dataset
         """
 
-        if self.teacher_func is None:
-            return self.image_data_file.shape[0]
-
-        return self.pretrain_size
+        return self.image_data_file.shape[0]
 
     def __getitem__(self, idx):
         """
@@ -116,43 +108,103 @@ class DatasetMapper(Dataset):
                 scale=np.random.uniform(0.7, 1),
                 flip="h",
                 gaussian_blur=1,
-                is_url=False,
             )
         else:
-            image = self.preprocessor.get("", img_name, is_url=False)
+            image = self.preprocessor.get("", img_name)
 
-        # Get image label/feature-values from teacher function (if specified)
-        if self.teacher_func is not None:
-            img_label = self.teacher_func(x=image)
-        else:
-            # If not specified, get label/feature-values from image data csv file
-            # img_label = F.one_hot(torch.LongTensor([self.image_data_file.iloc[idx, 1]]), num_classes=self.num_classes)
-            img_label = self.image_data_file.iloc[idx, 1]
-        # print(image.shape, flush=True)
+        img_label = self.image_data_file.iloc[idx, 1]
+
         return image, img_label
 
 
-class DatasetGen(Dataset):
+class GenDatasetMapper(Dataset):
+    """
+    Dataset Mapper class to get an image at random index and a dummy label.
+
+    The class is written using torch parent class 'Dataset' for parallelizing and prefetching to accelerate training
+
+    -----------
+    Attributes:
+    -----------
+    - root_dir: str
+        - directory path where images are stored
+
+    - list_dir: list[str]
+        - list of all the images present in the root_dir
+
+    - set_size: int
+        - number of all the images present in the root_dir
+
+    - preprocessor: Instance of subclass of utils.Preprocessor
+        - stores preprocessor with 'get' function that returns processed image given path to image and transformations
+
+    - pretrain_size: int
+        - number of images to use in one epoch
+        - pretrain_size is returned when __len__ is called which makes the DataLoader only retrieve pretrain_size number of images.
+
+    - augment: Bool
+        - boolean value specifying whether to transform images in preprocessor.
+
+    - last_img_given: int
+        - index of the image sent to DataLoader in previous call.
+        - this attribute is only used for book-keeping
+    """
+
     def __init__(
         self,
-        url,
+        root_dir: str,
         preprocessor: Preprocessor,
-        teacher_func=None,
-        pretrain_size=1,
-        augment=False,
-        **kwargs
+        pretrain_size: int = 1,
+        augment: bool = False,
     ) -> None:
+        """
+        Init for GenDatasetMapper
 
-        self.url = url
+        -----
+        Args:
+        -----
+        - root_dir: str
+            - directory path where images are stored
+
+        - preprocessor: Instance of subclass of utils.Preprocessor
+            - stores preprocessor with 'get' function that returns processed image given path to image and transformations
+
+        - pretrain_size: int
+            - number of images to use in one epoch
+            - pretrain_size is returned when __len__ is called which makes the DataLoader only retrieve pretrain_size number of images.
+
+        - augment: Bool
+            - boolean value specifying whether to transform images in preprocessor.
+        """
+
+        self.root_dir = root_dir
+        self.list_dir = os.listdir(root_dir)
+        self.set_size = len(self.list_dir)
+        print("**\ngen_data size: {}\n**".format(self.set_size))
         self.preprocessor = preprocessor
-        self.teacher_func = teacher_func
         self.pretrain_size = pretrain_size
         self.augment = augment
+        self.last_img_given = -1
 
     def __len__(self):
+        """
+        Function to get size of dataset for each epoch as specified (pretrain_size)
+        """
+
         return self.pretrain_size
 
-    def __getitem__(self, idx):
+    def __getitem__(self, _):
+        """
+        Mapper function to get a processed image at random index and a dummy label
+        """
+
+        # print(idx, flush=True)
+
+        self.last_img_given = np.random.randint(low=0, high=102400)
+
+        # print(self.last_img_given, flush=True)
+        # print(os.path.join(self.root_dir, self.list_dir[self.last_img_given]), flush=True)
+
         if self.augment:
             image = self.preprocessor.get(
                 self.preprocessor.make_random_combinations(
@@ -166,8 +218,9 @@ class DatasetGen(Dataset):
                         "random_erasing": 0,
                     },
                 )[0],
-                image_path=self.url,
-                is_url=True,
+                image_path=os.path.join(
+                    self.root_dir, self.list_dir[self.last_img_given]
+                ),
                 color_jitter=None,
                 rotate=np.random.randint(0, 45),
                 scale=np.random.uniform(0.7, 1),
@@ -175,12 +228,13 @@ class DatasetGen(Dataset):
                 gaussian_blur=1,
             )
         else:
-            image = self.preprocessor.get("", image_path=self.url, is_url=True)
+            image = self.preprocessor.get(
+                "",
+                image_path=os.path.join(
+                    self.root_dir, self.list_dir[self.last_img_given]
+                ),
+            )
 
-        # Get image label/feature-values from teacher function (if specified)
+        img_features = 0
 
-        img_features = self.teacher_func(x=image)
-        img_features = torch.squeeze(img_features, dim=0)
-
-        # print(image.shape, flush=True)
         return image, img_features
