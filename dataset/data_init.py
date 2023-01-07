@@ -71,7 +71,7 @@ if __name__ == "__main__":
         "-d",
         type=str,
         help="dataset root path",
-        default="dataset/105_classes_pins_dataset",
+        default="105_classes_pins_dataset",
     )
     parser.add_argument(
         "-otrain",
