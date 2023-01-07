@@ -22,7 +22,11 @@ def load_state_dict(model, fname):
                 own_state[name].copy_(torch.from_numpy(param))
             except Exception:
                 if name == "fc.weight" or "fc.bias":
-                    print(name)
+                    print(
+                        "Exception in load_state_dict: Ignoring weights of {}".format(
+                            name
+                        )
+                    )
                     continue
 
                 raise RuntimeError(
